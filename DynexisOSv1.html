@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DynexisOS</title>
+    <style>
+        :root {
+            --bg-color: #0f0f13;
+            --taskbar-bg: rgba(20, 20, 25, 0.65);
+            --window-bg: rgba(25, 25, 30, 0.85);
+            --accent-color: #00e5ff;
+            --accent-glow: 0 0 15px rgba(0, 229, 255, 0.4);
+            --text-color: #ffffff;
+            --text-muted: #a0a0a0;
+            --glass-border: 1px solid rgba(255, 255, 255, 0.1);
+            --font-main: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+        * { box-sizing: border-box; user-select: none; outline: none; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: var(--font-main); background: #000; color: var(--text-color); }
+        .hidden { display: none !important; }
+        .glass { background: var(--window-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: var(--glass-border); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37); }
+        .btn { background: rgba(255,255,255,0.1); border: none; color: white; padding: 8px 16px; border-radius: 4px; cursor: pointer; transition: 0.2s; }
+        .btn:hover { background: var(--accent-color); color: #000; }
+        .btn-primary { background: var(--accent-color); color: #000; font-weight: bold; }
+        .btn-primary:hover { box-shadow: var(--accent-glow); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        #boot-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--accent-color); transition: opacity 0.8s ease-out; }
+        #boot-screen.fade-out { opacity: 0; pointer-events: none; }
+        .boot-logo { font-size: 3rem; font-weight: 800; letter-spacing: 4px; margin-bottom: 30px; text-transform: uppercase; text-shadow: 0 0 20px var(--accent-color); animation: pulse 2s infinite ease-in-out; }
+        @keyframes pulse { 0% { opacity: 0.8; transform: scale(1); } 50% { opacity: 1; transform: scale(1.05); } 100% { opacity: 0.8; transform: scale(1); } }
+        .loader-bar { width: 250px; height: 6px; background: #333; border-radius: 4px; overflow: hidden; }
+        .loader-progress { width: 0%; height: 100%; background: var(--accent-color); box-shadow: 0 0 15px var(--accent-color); transition: width 0.1s linear; }
+
+        #login-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: url('https://picsum.photos/seed/dynexis_bg/1920/1080') no-repeat center center/cover; z-index: 8000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        #login-screen::before { content:''; position: absolute; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(5px); }
+        .login-box { position: relative; z-index: 2; width: 320px; padding: 40px; border-radius: 16px; text-align: center; }
+        .login-input { width: 100%; padding: 12px; margin: 10px 0; background: rgba(0,0,0,0.5); border: 1px solid #444; border-radius: 6px; color: white; }
+        .login-input:focus { border-color: var(--accent-color); }
+
+        #desktop { width: 100%; height: 100%; position: relative; background: url('https://picsum.photos/seed/dynexis_bg/1920/1080') no-repeat center center/cover; overflow: hidden; }
+        #desktop::before { content:''; position: absolute; inset: 0; background: rgba(0,0,0,0.1); pointer-events: none; }
+
+        .window { position: absolute; min-width: 300px; min-height: 200px; display: flex; flex-direction: column; border-radius: 10px; transition: transform 0.15s, opacity 0.15s; overflow: hidden; }
+        .window.minimized { opacity: 0; transform: scale(0.8) translateY(200px); pointer-events: none; }
+        .window.maximized { top: 0 !important; left: 0 !important; width: 100% !important; height: calc(100% - 68px) !important; border-radius: 0; }
+        .window-header { height: 36px; background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: space-between; padding: 0 10px; cursor: default; flex-shrink: 0; }
+        .window-title { font-size: 13px; font-weight: 500; color: var(--text-muted); pointer-events: none; }
+        .window-controls { display: flex; gap: 8px; }
+        .win-btn { width: 12px; height: 12px; border-radius: 50%; border: none; cursor: pointer; }
+        .win-close { background: #ff5f56; }
+        .win-min { background: #ffbd2e; }
+        .win-max { background: #27c93f; }
+        .window-content { flex: 1; overflow: auto; position: relative; background: rgba(0,0,0,0.2); }
+
+        #dock {
+            position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);
+            display: flex; align-items: flex-end; gap: 6px; padding: 6px 14px 6px 14px;
+            border-radius: 18px; z-index: 5000;
+            background: rgba(30, 30, 38, 0.55);
+            backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+            border: 1px solid rgba(255,255,255,0.12);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        .dock-item {
+            width: 48px; height: 48px; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 26px; cursor: pointer; transition: transform 0.2s ease, margin 0.2s ease, background 0.2s;
+            background: rgba(255,255,255,0.06); position: relative;
+            flex-shrink: 0; overflow: hidden;
+        }
+        .dock-item:hover {
+            transform: translateY(-10px) scale(1.3);
+            margin: 0 6px;
+            background: rgba(255,255,255,0.14);
+        }
+        .dock-item.active::after {
+            content: ''; position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%);
+            width: 5px; height: 5px; border-radius: 50%; background: var(--accent-color);
+            box-shadow: 0 0 6px var(--accent-color);
+        }
+        .dock-item img { width: 42px; height: 42px; border-radius: 10px; object-fit: cover; pointer-events: none; }
+        .dock-separator { width: 1px; height: 38px; background: rgba(255,255,255,0.15); margin: 0 4px; flex-shrink: 0; align-self: center; }
+        #dock-clock { font-size: 11px; color: white; text-align: center; line-height: 1.3; padding: 0 10px; display: flex; flex-direction: column; justify-content: center; min-width: 70px; }
+
+        #launcher-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(12px); z-index: 6000; display: flex; flex-direction: column; align-items: center; padding-top: 80px; opacity: 0; pointer-events: none; transition: 0.3s; }
+        #launcher-overlay.open { opacity: 1; pointer-events: auto; }
+        .search-bar { width: 500px; padding: 15px 25px; font-size: 18px; border-radius: 30px; border: none; background: rgba(255,255,255,0.1); color: white; backdrop-filter: blur(20px); margin-bottom: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); text-align: center; }
+        .search-bar:focus { background: rgba(255,255,255,0.15); box-shadow: 0 0 0 2px var(--accent-color); }
+        .app-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 20px; width: 80%; max-width: 1000px; max-height: 60vh; overflow-y: auto; padding: 20px; }
+        .app-item { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 15px; border-radius: 12px; cursor: pointer; transition: 0.2s; }
+        .app-item:hover { background: rgba(255,255,255,0.1); transform: scale(1.05); }
+        .app-item-icon { width: 48px; height: 48px; border-radius: 12px; background: #333; display: flex; align-items: center; justify-content: center; font-size: 24px; overflow: hidden; }
+        .app-item-icon img { width: 100%; height: 100%; object-fit: cover; border-radius: 12px; }
+        .app-item-name { font-size: 12px; text-align: center; }
+
+        #notification-area { position: fixed; top: 20px; right: 20px; z-index: 9000; display: flex; flex-direction: column; gap: 10px; }
+        .toast { width: 320px; padding: 15px; border-radius: 12px; border-left: 4px solid var(--accent-color); background: rgba(20, 20, 25, 0.95); color: white; font-size: 13px; animation: slideIn 0.3s forwards; backdrop-filter: blur(10px); box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+        @keyframes slideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        .terminal-app { font-family: 'Courier New', monospace; background: #0c0c0c; color: #0f0; padding: 10px; height: 100%; overflow-y: auto; font-size: 14px; }
+        .terminal-input { background: transparent; border: none; color: #0f0; width: 80%; font-family: inherit; font-size: inherit; }
+        .file-manager { padding: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; }
+        .file-item { display: flex; flex-direction: column; align-items: center; padding: 10px; border-radius: 5px; cursor: pointer; }
+        .file-item:hover { background: rgba(255,255,255,0.1); }
+        .file-icon { font-size: 32px; margin-bottom: 5px; }
+        .store-container { padding: 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
+        .store-card { background: rgba(255,255,255,0.05); border-radius: 10px; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
+        .html-maker { display: flex; flex-direction: column; height: 100%; }
+        .hm-toolbar { padding: 5px; background: rgba(0,0,0,0.2); display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+        .hm-body { flex: 1; display: flex; }
+        .hm-code, .hm-preview { flex: 1; height: 100%; border: none; padding: 10px; font-family: monospace; resize: none; background: rgba(0,0,0,0.3); color: white; }
+        .hm-preview { background: white; color: black; }
+        #context-menu { position: fixed; background: rgba(30,30,35,0.95); border: 1px solid #444; border-radius: 8px; width: 160px; padding: 5px 0; z-index: 9999; display: none; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        .ctx-item { padding: 8px 15px; font-size: 13px; cursor: pointer; color: white; }
+        .ctx-item:hover { background: var(--accent-color); color: black; }
+        .dock-tooltip { position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.15s; border: 1px solid rgba(255,255,255,0.15); }
+        .dock-item:hover .dock-tooltip { opacity: 1; }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); }
+    </style>
+</head>
+<body>
+
+    <div id="boot-screen">
+        <div class="boot-logo">DynexisOS</div>
+        <div class="loader-bar"><div class="loader-progress" id="boot-progress"></div></div>
+    </div>
+
+    <div id="login-screen" class="hidden">
+        <div class="login-box glass" id="auth-container"></div>
+    </div>
+
+    <div id="desktop" class="hidden">
+        <div id="window-container"></div>
+
+        <div id="launcher-overlay" onclick="if(event.target===this) Sys.toggleLauncher()">
+            <input type="text" class="search-bar" placeholder="Search apps, files, or web..." id="search-input" oninput="Sys.filterApps(this.value)">
+            <div class="app-grid" id="app-grid"></div>
+        </div>
+
+        <div id="dock"></div>
+
+        <div id="notification-area"></div>
+        <div id="context-menu">
+            <div class="ctx-item" onclick="Apps.uninstallCurrent()">Uninstall</div>
+        </div>
+    </div>
+
+    <script>
+        const DYNEXIS_UPDATES_LOGO = 'https://z-cdn-media.chatglm.cn/files/8993551e-46fc-41f6-b0b9-5808ffad9b02.png?auth_key=1882292917-50f72675bdb44519bbf43c21fbb8fd43-0-7a7f3cb8b65f7e362beb311730bdd689';
+
+        const FS = {
+            init: function(username) {
+                if (!Sys.state.users[username].fs) {
+                    Sys.state.users[username].fs = {
+                        '/home/user': [
+                            { name: 'Notes.txt', type: 'file', icon: '📄', action: 'open-txt', content: 'Welcome to DynexisOS!\n\nPress F2 to take photos.' },
+                            { name: 'todo.txt', type: 'file', icon: '📝', action: 'open-txt', content: '- Use Camera\n- Check Photos' },
+                            { name: 'Projects', type: 'folder', icon: '📁', path: '/home/user/Projects' },
+                            { name: 'Downloads', type: 'folder', icon: '📁', path: '/home/user/Downloads' },
+                            { name: 'Pictures', type: 'folder', icon: '🖼️', path: '/home/user/Pictures' }
+                        ],
+                        '/home/user/Projects': [{ name: 'website.html', type: 'file', icon: '🌐', action: 'open-code', content: '<h1>Future Website</h1>' }],
+                        '/home/user/Downloads': [{ name: 'setup.exe', type: 'file', icon: '⚙️', action: 'none' }],
+                        '/home/user/Pictures': []
+                    };
+                    Sys.saveUsers();
+                }
+            },
+            getFiles: function(path) { return Sys.state.users[Sys.state.currentUser].fs[path] || []; },
+            addFile: function(path, fileObj) {
+                const tree = Sys.state.users[Sys.state.currentUser].fs;
+                if (!tree[path]) tree[path] = [];
+                tree[path].push(fileObj);
+                Sys.saveUsers();
+                this.refreshFileManagers(path);
+            },
+            refreshFileManagers: function(changedPath) {
+                Sys.state.openWindows.forEach(win => {
+                    if (win.appId === 'files') {
+                        const grid = document.querySelector(`#${win.id} .file-manager`);
+                        if (grid && grid.dataset.path === changedPath) Apps.renderFiles(win.id, changedPath);
+                    }
+                });
+            }
+        };
+
+        const Apps = {
+            registry: {},
+            register: function(id, config) { this.registry[id] = { id, ...config }; },
+            uninstallCurrent: function() {
+                const menu = document.getElementById('context-menu');
+                const appId = menu.dataset.appId;
+                const coreApps = ['store', 'terminal', 'settings', 'files', 'html-maker', 'calculator', 'paint', 'music', 'camera', 'dynexis-updates', 'browser'];
+                if (coreApps.includes(appId)) return Sys.notify('System', 'Core apps cannot be uninstalled.');
+                if (confirm('Uninstall ' + appId + '?')) {
+                    Sys.state.installedApps = Sys.state.installedApps.filter(a => a !== appId);
+                    Sys.state.users[Sys.state.currentUser].apps = Sys.state.installedApps;
+                    localStorage.setItem('dynexis_users', JSON.stringify(Sys.state.users));
+                    Sys.notify('Store', appId + ' uninstalled.');
+                    const openWin = Sys.state.openWindows.find(w => w.appId === appId);
+                    if (openWin) Sys.closeWindow(openWin.id);
+                    Sys.renderDock();
+                }
+            },
+            loadUserApps: function(username) {
+                const userData = Sys.state.users[username];
+                if (!userData || !userData.createdApps) return;
+                userData.createdApps.forEach(appData => {
+                    if (!Apps.registry[appData.id]) {
+                        appData.render = function() {
+                            const blob = new Blob([appData.htmlCode], { type: 'text/html' });
+                            return `<iframe style="width:100%; height:100%; border:none;" src="${URL.createObjectURL(blob)}"></iframe>`;
+                        };
+                        Apps.register(appData.id, appData);
+                    }
+                });
+            }
+        };
+
+        const Sys = {
+            state: {
+                booted: false, currentUser: null,
+                users: JSON.parse(localStorage.getItem('dynexis_users')) || {},
+                installedApps: [], openWindows: [], zIndex: 100, missionFlags: {}
+            },
+            defaultBackground: 'url("https://picsum.photos/seed/dynexis_bg/1920/1080") no-repeat center center/cover',
+
+            init: function() {
+                this.boot();
+                this.updateClock();
+                setInterval(() => this.updateClock(), 1000);
+                document.addEventListener('keydown', (e) => this.handleShortcuts(e));
+                document.addEventListener('click', () => this.hideContextMenu());
+                this.renderLogin();
+            },
+
+            saveUsers: function() { localStorage.setItem('dynexis_users', JSON.stringify(this.state.users)); },
+
+            boot: function() {
+                let p = 0;
+                const bar = document.getElementById('boot-progress');
+                const screen = document.getElementById('boot-screen');
+                const interval = setInterval(() => {
+                    p += 2; if (p > 100) p = 100;
+                    bar.style.width = p + '%';
+                    if (p === 100) {
+                        clearInterval(interval);
+                        setTimeout(() => {
+                            screen.classList.add('fade-out');
+                            setTimeout(() => {
+                                screen.classList.add('hidden');
+                                document.getElementById('login-screen').classList.remove('hidden');
+                                this.state.booted = true;
+                            }, 800);
+                        }, 500);
+                    }
+                }, 30);
+            },
+
+            renderLogin: function() {
+                document.getElementById('auth-container').innerHTML = `
+                    <h2 style="margin-top:0; color:white;">Welcome Back</h2>
+                    <input type="text" id="login-user" class="login-input" placeholder="Username">
+                    <input type="password" id="login-pass" class="login-input" placeholder="Password">
+                    <button class="btn btn-primary" style="width:100%" onclick="Sys.login()">Login</button>
+                    <div style="margin-top:15px; font-size:12px; color:var(--text-muted);">
+                        <a href="#" onclick="Sys.renderRegister()" style="color:var(--accent-color); text-decoration:none;">Create Account</a>
+                    </div>`;
+            },
+
+            renderRegister: function() {
+                document.getElementById('auth-container').innerHTML = `
+                    <h2 style="margin-top:0; color:white;">Create Account</h2>
+                    <input type="text" id="reg-user" class="login-input" placeholder="Choose Username">
+                    <input type="password" id="reg-pass" class="login-input" placeholder="Choose Password">
+                    <button class="btn btn-primary" style="width:100%" onclick="Sys.doRegister()">Sign Up</button>
+                    <div style="margin-top:15px; font-size:12px; color:var(--text-muted);">
+                        <a href="#" onclick="Sys.renderLogin()" style="color:var(--accent-color); text-decoration:none;">Back to Login</a>
+                    </div>`;
+            },
+
+            login: function() {
+                const u = document.getElementById('login-user').value;
+                const p = document.getElementById('login-pass').value;
+                if (!u || !p) return this.notify('Error', 'Please enter credentials.');
+                if (this.state.users[u] && this.state.users[u].pass === p) this.enterDesktop(u);
+                else if (this.state.users[u]) this.notify('Login Failed', 'Incorrect password.');
+                else this.notify('Login Failed', 'User not found.');
+            },
+
+            doRegister: function() {
+                const u = document.getElementById('reg-user').value;
+                const p = document.getElementById('reg-pass').value;
+                if (!u || !p) return this.notify('Error', 'Please fill all fields.');
+                if (this.state.users[u]) return this.notify('Error', 'Username already taken.');
+                this.register(u, p);
+                this.notify('Success', 'Account created! Please login.');
+                this.renderLogin();
+            },
+
+            register: function(u, p) {
+                this.state.users[u] = {
+                    pass: p,
+                    apps: ['terminal', 'files', 'store', 'browser', 'html-maker', 'settings', 'ai', 'camera', 'dynexis-updates'],
+                    missions: {}, createdApps: [], background: this.defaultBackground
+                };
+                this.saveUsers();
+            },
+
+            enterDesktop: function(username) {
+                this.state.currentUser = username;
+                this.state.installedApps = this.state.users[username].apps || [];
+                this.state.missionFlags = this.state.users[username].missions || {};
+                const bg = this.state.users[username].background || this.defaultBackground;
+                document.getElementById('desktop').style.background = bg;
+                document.getElementById('login-screen').style.background = bg;
+                FS.init(username);
+                Apps.loadUserApps(username);
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('desktop').classList.remove('hidden');
+                this.renderDock();
+                this.renderLauncher();
+                this.notify('DynexisOS', `Welcome, ${username}. System ready.`);
+                if (!this.state.missionFlags.welcome_done) {
+                    setTimeout(() => this.notify('Mission', 'Open Terminal and type "help" to start.'), 2000);
+                }
+            },
+
+            logout: function() { location.reload(); },
+
+            updateClock: function() {
+                const now = new Date();
+                const el = document.getElementById('dock-clock');
+                if (el) el.innerHTML = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '<br>' + now.toLocaleDateString([], { month: 'short', day: 'numeric' });
+            },
+
+            handleBackgroundUpload: function(input) {
+                if (input.files && input.files[0]) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        try {
+                            const newBg = `url("${e.target.result}") no-repeat center center/cover`;
+                            Sys.state.users[Sys.state.currentUser].background = newBg;
+                            Sys.saveUsers();
+                            document.getElementById('desktop').style.background = newBg;
+                            document.getElementById('login-screen').style.background = newBg;
+                            Sys.notify('Settings', 'Background updated!');
+                        } catch(err) { Sys.notify('Error', 'Image too large.'); }
+                    };
+                    reader.readAsDataURL(input.files[0]);
+                }
+            },
+
+            resetBackground: function() {
+                Sys.state.users[Sys.state.currentUser].background = Sys.defaultBackground;
+                Sys.saveUsers();
+                document.getElementById('desktop').style.background = Sys.defaultBackground;
+                document.getElementById('login-screen').style.background = Sys.defaultBackground;
+                Sys.notify('Settings', 'Background reset.');
+            },
+
+            openWindow: function(appId) {
+                const appDef = Apps.registry[appId];
+                if (!appDef) return;
+                const existing = this.state.openWindows.find(w => w.appId === appId);
+                if (existing) { this.focusWindow(existing.id); if (existing.minimized) this.toggleMinimize(existing.id); return; }
+                const winId = appId + '-' + Date.now();
+                const winEl = document.createElement('div');
+                winEl.className = 'window glass';
+                winEl.id = winId;
+                winEl.style.width = appDef.width || '600px';
+                winEl.style.height = appDef.height || '400px';
+                winEl.style.top = (60 + (this.state.openWindows.length * 25)) + 'px';
+                winEl.style.left = (80 + (this.state.openWindows.length * 25)) + 'px';
+                winEl.style.zIndex = ++this.state.zIndex;
+                winEl.innerHTML = `
+                    <div class="window-header" onmousedown="Sys.startDrag(event, '${winId}')">
+                        <span class="window-title">${appDef.name}</span>
+                        <div class="window-controls">
+                            <button class="win-btn win-min" onclick="Sys.toggleMinimize('${winId}')"></button>
+                            <button class="win-btn win-max" onclick="Sys.toggleMaximize('${winId}')"></button>
+                            <button class="win-btn win-close" onclick="Sys.closeWindow('${winId}')"></button>
+                        </div>
+                    </div>
+                    <div class="window-content" id="content-${winId}"></div>`;
+                winEl.onmousedown = () => this.focusWindow(winId);
+                document.getElementById('window-container').appendChild(winEl);
+                let contentHTML = typeof appDef.render === 'function' ? appDef.render() : appDef.render;
+                document.getElementById('content-' + winId).innerHTML = contentHTML;
+                this.state.openWindows.push({ id: winId, appId: appId, el: winEl, minimized: false });
+                this.renderDock();
+                this.focusWindow(winId);
+                if (appDef.init) appDef.init(winId);
+            },
+
+            closeWindow: function(winId) {
+                const winEl = document.getElementById(winId);
+                if (winEl) { winEl.style.opacity = '0'; winEl.style.transform = 'scale(0.9)'; setTimeout(() => winEl.remove(), 200); }
+                this.state.openWindows = this.state.openWindows.filter(w => w.id !== winId);
+                this.renderDock();
+            },
+
+            focusWindow: function(winId) {
+                const win = this.state.openWindows.find(w => w.id === winId);
+                if (win) { win.el.style.zIndex = ++this.state.zIndex; this.renderDock(); }
+            },
+
+            toggleMinimize: function(winId) {
+                const win = this.state.openWindows.find(w => w.id === winId);
+                if (win) { win.minimized = !win.minimized; win.el.classList.toggle('minimized', win.minimized); this.renderDock(); }
+            },
+
+            toggleMaximize: function(winId) { document.getElementById(winId).classList.toggle('maximized'); },
+
+            startDrag: function(e, winId) {
+                if (e.target.closest('.window-controls')) return;
+                const winEl = document.getElementById(winId);
+                let shiftX = e.clientX - winEl.getBoundingClientRect().left;
+                let shiftY = e.clientY - winEl.getBoundingClientRect().top;
+                function moveAt(pageX, pageY) { winEl.style.left = pageX - shiftX + 'px'; winEl.style.top = pageY - shiftY + 'px'; winEl.classList.remove('maximized'); }
+                function onMouseMove(event) { moveAt(event.pageX, event.pageY); }
+                document.addEventListener('mousemove', onMouseMove);
+                document.onmouseup = function() { document.removeEventListener('mousemove', onMouseMove); document.onmouseup = null; };
+            },
+
+            renderDock: function() {
+                const dock = document.getElementById('dock');
+                dock.innerHTML = '';
+                const dockApps = ['dynexis-updates', 'terminal', 'files', 'browser', 'store', 'html-maker', 'settings', 'camera'];
+                dockApps.forEach((appId, i) => {
+                    if (!this.state.installedApps.includes(appId)) return;
+                    const app = Apps.registry[appId];
+                    if (!app) return;
+                    if (i === 1) { const sep = document.createElement('div'); sep.className = 'dock-separator'; dock.appendChild(sep); }
+                    const item = document.createElement('div');
+                    item.className = 'dock-item';
+                    const isOpen = this.state.openWindows.some(w => w.appId === appId && !w.minimized);
+                    if (isOpen) item.classList.add('active');
+                    const tooltip = document.createElement('div');
+                    tooltip.className = 'dock-tooltip';
+                    tooltip.textContent = app.name;
+                    item.appendChild(tooltip);
+                    if (app.iconImage) {
+                        const img = document.createElement('img');
+                        img.src = app.iconImage; img.alt = app.name; img.draggable = false;
+                        item.appendChild(img);
+                    } else { item.innerHTML += app.icon; }
+                    item.onclick = () => {
+                        const existing = this.state.openWindows.find(w => w.appId === appId);
+                        if (existing) {
+                            if (existing.minimized) this.toggleMinimize(existing.id);
+                            else if (existing.id === this.getTopWindowId()) this.toggleMinimize(existing.id);
+                            else this.focusWindow(existing.id);
+                        } else { this.openWindow(appId); }
+                    };
+                    item.oncontextmenu = (e) => { e.preventDefault(); this.showContextMenu(e, appId); };
+                    dock.appendChild(item);
+                });
+                const sep2 = document.createElement('div'); sep2.className = 'dock-separator'; dock.appendChild(sep2);
+                const clockEl = document.createElement('div'); clockEl.id = 'dock-clock'; clockEl.innerHTML = '12:00<br>Jan 1'; dock.appendChild(clockEl);
+                this.updateClock();
+            },
+
+            getTopWindowId: function() {
+                let top = null, maxZ = 0;
+                this.state.openWindows.forEach(w => { const z = parseInt(w.el.style.zIndex); if (z > maxZ) { maxZ = z; top = w.id; } });
+                return top;
+            },
+
+            toggleLauncher: function() {
+                const el = document.getElementById('launcher-overlay');
+                el.classList.toggle('open');
+                if (el.classList.contains('open')) { document.getElementById('search-input').focus(); this.renderLauncher(); }
+            },
+
+            renderLauncher: function(filter = '') {
+                const grid = document.getElementById('app-grid');
+                grid.innerHTML = '';
+                Object.values(Apps.registry).forEach(app => {
+                    if (filter && !app.name.toLowerCase().includes(filter.toLowerCase())) return;
+                    if (!this.state.installedApps.includes(app.id) && app.id !== 'store') return;
+                    const item = document.createElement('div');
+                    item.className = 'app-item';
+                    let iconHTML = app.iconImage ? `<img src="${app.iconImage}" alt="${app.name}">` : app.icon;
+                    item.innerHTML = `<div class="app-item-icon" style="color:${app.color}">${iconHTML}</div><div class="app-item-name">${app.name}</div>`;
+                    item.onclick = () => { this.toggleLauncher(); this.openWindow(app.id); };
+                    grid.appendChild(item);
+                });
+            },
+
+            filterApps: function(val) { this.renderLauncher(val); },
+
+            notify: function(title, msg) {
+                const area = document.getElementById('notification-area');
+                const toast = document.createElement('div');
+                toast.className = 'toast glass';
+                toast.innerHTML = `<strong>${title}</strong><br>${msg}`;
+                area.appendChild(toast);
+                setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 4000);
+            },
+
+            showContextMenu: function(e, appId) {
+                const menu = document.getElementById('context-menu');
+                menu.style.display = 'block';
+                menu.style.left = e.pageX + 'px';
+                menu.style.top = e.pageY + 'px';
+                menu.dataset.appId = appId;
+            },
+
+            hideContextMenu: function() { document.getElementById('context-menu').style.display = 'none'; },
+
+            handleShortcuts: function(e) {
+                if (e.key === 'F2') { e.preventDefault(); Apps.triggerCamera(); }
+                if (e.key === 'Escape') document.getElementById('launcher-overlay').classList.remove('open');
+                if (e.altKey && e.key === 'Tab') {
+                    e.preventDefault();
+                    if (this.state.openWindows.length < 2) return;
+                    const topId = this.getTopWindowId();
+                    const idx = this.state.openWindows.findIndex(w => w.id === topId);
+                    this.focusWindow(this.state.openWindows[(idx + 1) % this.state.openWindows.length].id);
+                }
+            }
+        };
+
+        /* ======================= APP DEFINITIONS ======================= */
+
+        Apps.register('dynexis-updates', {
+            name: 'DynexisOSUpdates',
+            icon: '',
+            iconImage: DYNEXIS_UPDATES_LOGO,
+            color: '#00e5ff',
+            width: '900px', height: '620px',
+            render: function() {
+                return `<div style="display:flex; flex-direction:column; height:100%;">
+                    <div style="padding:8px 12px; background:rgba(255,255,255,0.08); display:flex; gap:8px; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); flex-shrink:0;">
+                        <button class="btn" style="padding:4px 12px; font-size:14px;" onclick="document.getElementById('dynexis-updates-frame').contentWindow.history.back()">←</button>
+                        <button class="btn" style="padding:4px 12px; font-size:14px;" onclick="document.getElementById('dynexis-updates-frame').contentWindow.history.forward()">→</button>
+                        <button class="btn" style="padding:4px 12px; font-size:14px;" onclick="document.getElementById('dynexis-updates-frame').src='https://sites.google.com/view/dynexisosupdates/start'">↻</button>
+                        <div style="flex:1; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:6px 14px; font-size:12px; color:#aaa; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">
+                            sites.google.com/view/dynexisosupdates/start
+                        </div>
+                    </div>
+                    <iframe id="dynexis-updates-frame" src="https://sites.google.com/view/dynexisosupdates/start" style="flex:1; border:none; width:100%; background:white;"></iframe>
+                </div>`;
+            }
+        });
+
+        Apps.register('terminal', {
+            name: 'Terminal', icon: '💻', color: '#0f0', width: '500px', height: '350px',
+            render: () => `<div class="terminal-app" id="term-output">
+                DynexisOS v3.0.0 [User: ${Sys.state.currentUser}]<br>Type 'help' for commands.<br><br>
+                <span id="term-history"></span>
+                <span style="color:#00e5ff">root@dynexisos:~$</span> <input type="text" class="terminal-input" onkeydown="Apps.handleTermInput(event, this)">
+            </div>`,
+            init: (winId) => {
+                const input = document.querySelector(`#${winId} input`);
+                input.focus();
+                document.getElementById(`content-${winId}`).onclick = () => input.focus();
+            }
+        });
+        Apps.handleTermInput = function(e, input) {
+            if (e.key === 'Enter') {
+                const cmd = input.value.trim().split(' ');
+                const val = input.value;
+                const hist = document.getElementById('term-history');
+                hist.innerHTML += `<div><span style="color:#00e5ff">root@dynexisos:~$</span> ${val}</div>`;
+                const r = (t) => hist.innerHTML += `<div>${t}</div>`;
+                switch (cmd[0]) {
+                    case 'help': r('Commands: help, ls, cat [file], clear, whoami, date, secret'); break;
+                    case 'ls': r('Documents  Pictures  Projects  Downloads'); break;
+                    case 'whoami': r(Sys.state.currentUser); break;
+                    case 'date': r(new Date().toString()); break;
+                    case 'clear': hist.innerHTML = ''; break;
+                    case 'secret': r('Hint: Try using the Camera (F2)'); break;
+                    default: if (val) r(`Command not found: ${cmd[0]}`);
+                }
+                input.value = '';
+                document.querySelector('.terminal-app').scrollTop = 10000;
+            }
+        };
+
+        Apps.register('files', {
+            name: 'Files', icon: '📁', color: '#ffd700', width: '600px', height: '400px',
+            render: () => `<div style="display:flex; flex-direction:column; height:100%;">
+                <div style="padding:10px; border-bottom:1px solid #333; display:flex; align-items:center; gap:10px; background:rgba(0,0,0,0.2);">
+                    <button class="btn" style="padding:4px 8px;" onclick="Apps.navFileUp(this)">⬅ Back</button>
+                    <span id="path-display" style="font-size:13px; color:#ccc; flex:1;">/home/user</span>
+                </div>
+                <div class="file-manager" id="fm-grid-${Date.now()}"></div>
+            </div>`,
+            init: function(winId) { Apps.renderFiles(winId, '/home/user'); }
+        });
+        Apps.renderFiles = function(winId, path) {
+            const grid = document.querySelector(`#${winId} .file-manager`);
+            const pathDisplay = document.querySelector(`#${winId} #path-display`);
+            if (!grid) return;
+            grid.dataset.path = path; pathDisplay.innerText = path; grid.innerHTML = '';
+            const items = FS.getFiles(path);
+            if (!items.length) { grid.innerHTML = '<div style="padding:20px; color:#666; text-align:center;">This folder is empty</div>'; return; }
+            items.forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'file-item';
+                el.innerHTML = `<div class="file-icon">${item.icon}</div><span>${item.name}</span>`;
+                el.onclick = () => { if (item.type === 'folder') Apps.renderFiles(winId, item.path); else Apps.handleFileOpen(item); };
+                grid.appendChild(el);
+            });
+        };
+        Apps.navFileUp = function(btn) {
+            const winId = btn.closest('.window').id;
+            const grid = document.querySelector(`#${winId} .file-manager`);
+            let current = grid.dataset.path || '/home/user';
+            if (current !== '/home/user') { const p = current.split('/'); p.pop(); Apps.renderFiles(winId, p.join('/') || '/home/user'); }
+        };
+        Apps.handleFileOpen = function(item) {
+            if (item.action === 'open-txt' || item.action === 'open-code') {
+                if (!Apps.registry['text-editor']) {
+                    Apps.register('text-editor', {
+                        name: 'Text Editor', icon: '📝', color: '#fff', width: '500px', height: '400px',
+                        render: () => `<textarea style="width:100%; height:100%; background:#222; color:white; border:none; padding:10px; font-family:monospace; resize:none;" spellcheck="false"></textarea>`, init: () => {}
+                    });
+                }
+                Sys.openWindow('text-editor');
+                setTimeout(() => { const ta = document.querySelector(`#${Sys.getTopWindowId()} textarea`); if (ta) ta.value = item.content; }, 100);
+            }
+        };
+
+        Apps.register('store', {
+            name: 'DynexisOS Store', icon: '🛍️', color: '#ff4081', width: '700px', height: '500px',
+            render: () => `<div class="store-container" id="store-grid"></div>`,
+            init: () => Apps.renderStore()
+        });
+        Apps.renderStore = function() {
+            const grid = document.getElementById('store-grid');
+            if (!grid) return;
+            grid.innerHTML = '';
+            const systemApps = [
+                { id: 'calculator', name: 'Calculator', icon: '🧮', color: '#fff' },
+                { id: 'paint', name: 'Paint Pro', icon: '🎨', color: 'orange' },
+                { id: 'music', name: 'Music Player', icon: '🎵', color: 'purple' },
+                { id: 'camera', name: 'Camera App', icon: '📷', color: 'red' }
+            ];
+            let all = [...systemApps];
+            const u = Sys.state.currentUser;
+            if (Sys.state.users[u] && Sys.state.users[u].createdApps) {
+                Sys.state.users[u].createdApps.forEach(a => all.push({ id: a.id, name: a.name + ' (Your App)', icon: a.icon, color: a.color, isUserApp: true }));
+            }
+            all.forEach(app => {
+                const installed = Sys.state.installedApps.includes(app.id);
+                const card = document.createElement('div');
+                card.className = 'store-card glass';
+                card.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:15px;">
+                        <div style="font-size:32px; background:#333; width:50px; height:50px; display:flex; align-items:center; justify-content:center; border-radius:10px;">${app.icon}</div>
+                        <div><div style="font-weight:bold">${app.name}</div><div style="font-size:12px; color:#aaa">${app.isUserApp ? 'Community' : 'System Tools'}</div></div>
+                    </div>
+                    <button class="btn ${installed ? '' : 'btn-primary'}" style="width:100%" onclick="Apps.installApp('${app.id}', this)" ${installed ? 'disabled' : ''}>${installed ? 'Installed' : 'Get'}</button>`;
+                grid.appendChild(card);
+            });
+        };
+        Apps.installApp = function(id, btn) {
+            if (Sys.state.installedApps.includes(id)) return;
+            Sys.state.installedApps.push(id);
+            Sys.state.users[Sys.state.currentUser].apps = Sys.state.installedApps;
+            localStorage.setItem('dynexis_users', JSON.stringify(Sys.state.users));
+            btn.innerText = 'Installed'; btn.classList.remove('btn-primary'); btn.disabled = true;
+            Sys.notify('Store', 'App installed!');
+            Sys.renderLauncher(); Sys.renderDock();
+        };
+
+        Apps.register('browser', {
+            name: 'Web Browser', icon: '🌐', color: '#2196f3', width: '800px', height: '500px',
+            render: () => `<div style="display:flex; flex-direction:column; height:100%;">
+                <div style="padding:8px; background:rgba(255,255,255,0.1); display:flex; gap:10px;">
+                    <button class="btn" style="padding:4px 10px">←</button>
+                    <input type="text" value="https://dynexisos.net" style="flex:1; background:rgba(0,0,0,0.3); border:none; color:white; border-radius:4px; padding:0 10px;" readonly>
+                </div>
+                <div style="flex:1; background:white; color:#333; padding:20px; overflow:auto;"><h1>DynexisOS Network</h1><p>Welcome to the simulated internet.</p></div>
+            </div>`
+        });
+
+        Apps.register('html-maker', {
+            name: 'HTML Maker', icon: '🛠️', color: '#ff5722', width: '700px', height: '550px',
+            render: () => `<div class="html-maker">
+                <div class="hm-toolbar" style="padding:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <input type="text" id="new-app-name" placeholder="App Name" style="background:rgba(0,0,0,0.3); border:1px solid #444; color:white; padding:5px; border-radius:4px; width:150px;">
+                    <input type="text" id="new-app-icon" placeholder="Icon" style="background:rgba(0,0,0,0.3); border:1px solid #444; color:white; padding:5px; border-radius:4px; width:50px; text-align:center;">
+                    <div style="flex:1;"></div>
+                    <button class="btn btn-primary" onclick="Apps.runHtml(this)">▶ Run</button>
+                    <button class="btn" style="background:#27c93f; color:white;" onclick="Apps.publishHtml(this)">📤 Publish</button>
+                </div>
+                <div class="hm-body">
+                    <textarea class="hm-code" id="html-code-area" placeholder="<h1>Hello</h1>"><h1 style="color:blue; text-align:center;">My App</h1><p>Welcome!</p></textarea>
+                    <iframe class="hm-preview" id="html-preview-frame"></iframe>
+                </div>
+            </div>`,
+            init: function(winId) { const btn = document.querySelector(`#${winId} .btn-primary`); if (btn) Apps.runHtml(btn); }
+        });
+        Apps.runHtml = function(btn) {
+            const win = btn.closest('.window-content') || btn.closest('.window').querySelector('.window-content');
+            const codeArea = win.querySelector('#html-code-area');
+            const frame = win.querySelector('#html-preview-frame');
+            if (!codeArea || !frame) return;
+            const doc = frame.contentDocument || frame.contentWindow.document;
+            doc.open(); doc.write(codeArea.value); doc.close();
+        };
+        Apps.publishHtml = function(btn) {
+            const win = btn.closest('.window-content') || btn.closest('.window').querySelector('.window-content');
+            const name = win.querySelector('#new-app-name').value.trim();
+            const icon = win.querySelector('#new-app-icon').value.trim() || '📦';
+            const code = win.querySelector('#html-code-area').value;
+            if (!name) return Sys.notify('Error', 'Please enter an App Name.');
+            const appId = 'user-app-' + Date.now();
+            const appRender = function() {
+                const blob = new Blob([code], { type: 'text/html' });
+                return `<iframe style="width:100%; height:100%; border:none;" src="${URL.createObjectURL(blob)}"></iframe>`;
+            };
+            const newApp = { id: appId, name, icon, color: '#607d8b', width: '600px', height: '450px', isUserApp: true, htmlCode: code, render: appRender };
+            const currentUser = Sys.state.currentUser;
+            if (!Sys.state.users[currentUser].createdApps) Sys.state.users[currentUser].createdApps = [];
+            Sys.state.users[currentUser].createdApps.push(newApp);
+            Sys.state.installedApps.push(appId);
+            Sys.state.users[currentUser].apps = Sys.state.installedApps;
+            Apps.register(appId, newApp);
+            localStorage.setItem('dynexis_users', JSON.stringify(Sys.state.users));
+            Sys.notify('Published', `"${name}" is now available!`);
+            Sys.renderLauncher(); Sys.renderDock();
+        };
+
+        Apps.register('settings', {
+            name: 'Settings', icon: '⚙️', color: '#aaa', width: '500px', height: '420px',
+            render: function() {
+                return `<div style="padding:20px; display:flex; flex-direction:column; gap:20px;">
+                    <h3 style="margin:0; color:var(--accent-color);">System Settings</h3>
+                    <div class="glass" style="padding:15px; border-radius:10px;">
+                        <div style="font-weight:bold; margin-bottom:10px;">Wallpaper</div>
+                        <input type="file" accept="image/*" onchange="Sys.handleBackgroundUpload(this)" style="color:white; margin-bottom:10px;">
+                        <button class="btn" onclick="Sys.resetBackground()">Reset to Default</button>
+                    </div>
+                    <div class="glass" style="padding:15px; border-radius:10px;">
+                        <div style="font-weight:bold; margin-bottom:10px;">Account</div>
+                        <div style="color:var(--text-muted); font-size:13px;">Logged in as: <strong style="color:white;">${Sys.state.currentUser}</strong></div>
+                        <button class="btn" style="margin-top:10px; background:#ff5f56;" onclick="if(confirm('Logout?')) Sys.logout()">Logout</button>
+                    </div>
+                    <div class="glass" style="padding:15px; border-radius:10px;">
+                        <div style="font-weight:bold; margin-bottom:10px;">About</div>
+                        <div style="color:var(--text-muted); font-size:13px;">DynexisOS &bull; Version 3.0.0<br>Built with HTML, CSS & JS</div>
+                    </div>
+                </div>`;
+            }
+        });
+
+        Apps.register('ai', {
+            name: 'AI Assistant', icon: '🤖', color: '#ab47bc', width: '400px', height: '500px',
+            render: () => `<div style="display:flex; flex-direction:column; height:100%;">
+                <div id="ai-chat" style="flex:1; padding:15px; overflow-y:auto; display:flex; flex-direction:column; gap:10px;">
+                    <div style="background:rgba(0,229,255,0.1); padding:10px; border-radius:10px; max-width:80%; align-self:flex-start; font-size:13px;">Hello! I'm DynexisOS AI. Ask me anything!</div>
+                </div>
+                <div style="padding:10px; border-top:1px solid #333; display:flex; gap:8px;">
+                    <input type="text" id="ai-input" placeholder="Type a message..." style="flex:1; background:rgba(0,0,0,0.3); border:1px solid #444; color:white; padding:8px 12px; border-radius:6px;" onkeydown="if(event.key==='Enter') Apps.sendAI()">
+                    <button class="btn btn-primary" onclick="Apps.sendAI()">Send</button>
+                </div>
+            </div>`,
+            init: (winId) => { document.querySelector(`#${winId} #ai-input`).focus(); }
+        });
+        Apps.sendAI = function() {
+            const input = document.getElementById('ai-input');
+            const msg = input.value.trim();
+            if (!msg) return;
+            const chat = document.getElementById('ai-chat');
+            chat.innerHTML += `<div style="background:rgba(255,255,255,0.1); padding:10px; border-radius:10px; max-width:80%; align-self:flex-end; font-size:13px;">${msg}</div>`;
+            input.value = '';
+            setTimeout(() => {
+                const resp = ["That's interesting!", "I'm a simple AI, but I'll help!", "Try checking the Terminal.", "DynexisOS is always evolving!", "Great choice using DynexisOS!", "Explore the HTML Maker app!", "Change your wallpaper in Settings!"];
+                chat.innerHTML += `<div style="background:rgba(0,229,255,0.1); padding:10px; border-radius:10px; max-width:80%; align-self:flex-start; font-size:13px;">${resp[Math.floor(Math.random() * resp.length)]}</div>`;
+                chat.scrollTop = chat.scrollHeight;
+            }, 800);
+            chat.scrollTop = chat.scrollHeight;
+        };
+
+        Apps.register('camera', {
+            name: 'Camera', icon: '📷', color: 'red', width: '500px', height: '400px',
+            render: () => `<div style="height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#111; gap:15px;">
+                <video id="cam-feed" autoplay playsinline style="max-width:100%; max-height:70%; border-radius:8px;"></video>
+                <button class="btn btn-primary" onclick="Apps.takePhoto()">📸 Capture</button>
+            </div>`,
+            init: function() {
+                navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+                    const v = document.getElementById('cam-feed'); if (v) v.srcObject = stream;
+                }).catch(() => {});
+            }
+        });
+        Apps.takePhoto = function() {
+            const v = document.getElementById('cam-feed');
+            if (!v || !v.srcObject) return Sys.notify('Camera', 'No camera available.');
+            const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+            c.getContext('2d').drawImage(v, 0, 0);
+            FS.addFile('/home/user/Pictures', { name: 'photo_' + Date.now() + '.png', type: 'file', icon: '🖼️', action: 'open-img', content: c.toDataURL('image/png') });
+            Sys.notify('Camera', 'Photo saved!');
+        };
+        Apps.triggerCamera = function() { Sys.openWindow('camera'); };
+
+        Apps.register('calculator', {
+            name: 'Calculator', icon: '🧮', color: '#fff', width: '280px', height: '380px',
+            render: () => `<div style="padding:15px; display:flex; flex-direction:column; height:100%; gap:10px;">
+                <input type="text" id="calc-display" readonly value="0" style="background:rgba(0,0,0,0.4); border:1px solid #444; color:white; padding:15px; font-size:28px; text-align:right; border-radius:8px; font-family:monospace;">
+                <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; flex:1;">
+                    ${['C','±','%','÷','7','8','9','×','4','5','6','−','1','2','3','+','0','0','.','='].map(b => {
+                        let bg = 'rgba(255,255,255,0.1)';
+                        if ('÷×−+='.includes(b)) bg = 'var(--accent-color)';
+                        if (b === 'C') bg = '#ff5f56';
+                        return `<button class="btn" style="background:${bg}; color:${'÷×−+=C'.includes(b)?'black':'white'}; font-size:18px; padding:12px; border-radius:8px;" onclick="Apps.calcBtn('${b}')">${b}</button>`;
+                    }).join('')}
+                </div>
+            </div>`
+        });
+        Apps.calcState = { current: '0', op: null, prev: null };
+        Apps.calcBtn = function(b) {
+            const d = document.getElementById('calc-display'); if (!d) return;
+            if (b === 'C') { Apps.calcState = { current: '0', op: null, prev: null }; d.value = '0'; return; }
+            if (b === '±') { d.value = String(-parseFloat(d.value)); return; }
+            if (b === '%') { d.value = String(parseFloat(d.value) / 100); return; }
+            if ('0123456789.'.includes(b)) { d.value = (d.value === '0' && b !== '.') ? b : d.value + b; return; }
+            if ('÷×−+'.includes(b)) { Apps.calcState.prev = parseFloat(d.value); Apps.calcState.op = b; d.value = '0'; return; }
+            if (b === '=') {
+                const cur = parseFloat(d.value), prev = Apps.calcState.prev;
+                if (prev === null || !Apps.calcState.op) return;
+                let r = 0;
+                switch (Apps.calcState.op) { case '+': r = prev + cur; break; case '−': r = prev - cur; break; case '×': r = prev * cur; break; case '÷': r = cur !== 0 ? prev / cur : 'Error'; break; }
+                d.value = String(r); Apps.calcState = { current: String(r), op: null, prev: null };
+            }
+        };
+
+        Apps.register('paint', {
+            name: 'Paint Pro', icon: '🎨', color: 'orange', width: '600px', height: '450px',
+            render: () => `<div style="display:flex; flex-direction:column; height:100%;">
+                <div style="padding:8px; background:rgba(0,0,0,0.2); display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <input type="color" id="paint-color" value="#00e5ff" style="width:30px; height:30px; border:none; cursor:pointer;">
+                    <input type="range" id="paint-size" min="1" max="30" value="3" style="width:80px;">
+                    <button class="btn" style="padding:4px 10px;" onclick="document.getElementById('paint-canvas').getContext('2d').clearRect(0,0,9999,9999)">Clear</button>
+                </div>
+                <canvas id="paint-canvas" style="flex:1; cursor:crosshair; background:white;"></canvas>
+            </div>`,
+            init: function(winId) {
+                const canvas = document.querySelector(`#${winId} #paint-canvas`);
+                if (!canvas) return;
+                const rect = canvas.parentElement.getBoundingClientRect();
+                canvas.width = rect.width; canvas.height = rect.height - 50;
+                const ctx = canvas.getContext('2d');
+                let drawing = false;
+                canvas.onmousedown = (e) => { drawing = true; ctx.beginPath(); ctx.moveTo(e.offsetX, e.offsetY); };
+                canvas.onmousemove = (e) => {
+                    if (!drawing) return;
+                    ctx.strokeStyle = document.getElementById('paint-color').value;
+                    ctx.lineWidth = document.getElementById('paint-size').value;
+                    ctx.lineCap = 'round'; ctx.lineTo(e.offsetX, e.offsetY); ctx.stroke();
+                };
+                canvas.onmouseup = () => drawing = false;
+                canvas.onmouseleave = () => drawing = false;
+            }
+        });
+
+        Apps.register('music', {
+            name: 'Music Player', icon: '🎵', color: 'purple', width: '350px', height: '300px',
+            render: () => `<div style="padding:20px; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:15px;">
+                <div style="width:100px; height:100px; border-radius:50%; background:linear-gradient(135deg,#ab47bc,#7c4dff); display:flex; align-items:center; justify-content:center; font-size:40px; animation: spin 4s linear infinite;">🎵</div>
+                <style>@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }</style>
+                <div style="font-weight:bold;">Lo-Fi Beats</div>
+                <div style="font-size:12px; color:#aaa;">DynexisOS Radio</div>
+                <div style="display:flex; gap:15px; margin-top:10px;">
+                    <button class="btn" style="font-size:18px;">⏮</button>
+                    <button class="btn btn-primary" style="font-size:18px; padding:8px 16px;">▶</button>
+                    <button class="btn" style="font-size:18px;">⏭</button>
+                </div>
+            </div>`
+        });
+
+        Sys.init();
+    </script>
+</body>
+</html>
